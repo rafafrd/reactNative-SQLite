@@ -15,6 +15,7 @@
 ##### tela home:
 
 Tela de boas vindas, onde o usuario pode escolher entre acessar as categorias ou os produtos.
+funcionará com navegação stack navigator, onde ao clicar em categorias ou produtos, o usuario sera redirecionado para a tela.
 
 ##### tela categorias:
 

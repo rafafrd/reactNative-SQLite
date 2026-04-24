@@ -1,3 +1,4 @@
+package-lock.json
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
 # dependencies
@@ -39,5 +40,3 @@ yarn-error.*
 # generated native folders
 /ios
 /android
-
-package-lock.json
