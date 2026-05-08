@@ -1,261 +1,325 @@
-import { useLayoutEffect, useState } from "react";
-import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View,
-} from "react-native";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "../../../App";
+import React, { useEffect, useState } from 'react';
+import { View, Text, Button, FlatList, TouchableOpacity, StyleSheet, Alert, Modal, TextInput } from 'react-native';
+import { initDB, resetDB } from '../../database/database';
+import { CategoriasRepository } from '../../repository/CategoriaRepository';
+import { Categoria } from '../../models/Categoria';
 
-type Props = NativeStackScreenProps<RootStackParamList, "Categorias">;
+// Tela principal de gestão de categorias: lista, cria, edita e exclui categorias do banco de dados
+export default function CategoriaScreen() {
 
-// Tipo da categoria
-type Categoria = { id: number; nome: string };
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [nomeCategoria, setNomeCategoria] = useState('');
+  const [selectedCategoria, setSelectedCategoria] = useState<Categoria | null>(null);
 
-// Dados de exemplo - será substituído pelo SQLite
-const dadosIniciais: Categoria[] = [
-  { id: 1, nome: "Eletrônicos" },
-  { id: 2, nome: "Roupas" },
-  { id: 3, nome: "Alimentos" },
-];
+  const categoriaRepo = new CategoriasRepository(); // O construtor que exigia db foi removido do CategoriaRepository.ts. Agora todos os métodos chamam getDB() internamente, igual ao que findAll já fazia antes — 
+  // o que é o padrão correto para um singleton de banco de dados. O erro na linha 15 da tela desaparece sem precisar alterar o arquivo categorias/index.tsx.
 
-export default function Categorias({ navigation }: Props) { //sonarQube fala para marcar como readonly
-  const [data, setData] = useState<Categoria[]>(dadosIniciais);
-  const [modalVisivel, setModalVisivel] = useState(false);
-  const [nomeInput, setNomeInput] = useState("");
-  const [editandoId, setEditandoId] = useState<number | null>(null);
-
-  // add botao "novo", que chama o modal zerado
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerRight: () => (
-        <Pressable
-          style={styles.headerBtn}
-          onPress={() => {
-            setEditandoId(null);
-            setNomeInput("");
-            setModalVisivel(true); // muda o estado pra mostrar o modal
-          }}
-        >
-          <Text style={styles.headerBtnTexto}>nova</Text>
-        </Pressable>
-      ),
-    });
-  }, [navigation]);
-
-  // Abre modal preenchido para editar
-  function abrirEditar(item: Categoria) {
-    setEditandoId(item.id);
-    setNomeInput(item.nome);
-    setModalVisivel(true);
-  }
-
-  // Cria ou atualiza a categoria conforme editandoId
-  function salvar() {
-    if (!nomeInput.trim()) return;
-
-    if (editandoId !== null) {
-      // Atualiza existente
-      setData((prev) =>
-        prev.map((c) =>
-          c.id === editandoId ? { ...c, nome: nomeInput.trim() } : c
-        )
-      );
-    } else {
-      // Insere novo com id único
-      setData((prev) => [
-        ...prev,
-        { id: Date.now(), nome: nomeInput.trim() },
-      ]);
+  // Inicializa o banco de dados e carrega os dados ao montar o componente (executa apenas uma vez)
+  useEffect(() => {
+    // Garante que o banco está criado antes de tentar buscar os dados
+    const setup = async () => {
+      // await resetDB(); // Limpa o banco para testes
+      await initDB();
+      loadData();
     }
+    setup();
+  }, [])
 
-    setModalVisivel(false);
+  // Busca todas as categorias do banco e atualiza o estado; também fecha o modal ao final
+  async function loadData(): Promise<void> {
+    const data = await categoriaRepo.findAll();
+    setCategorias(data);
+    setModalVisible(false);
   }
 
-  // Confirma e remove a categoria
-  function excluir(id: number) {
-    Alert.alert("Excluir categoria", "Tem certeza?", [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Excluir",
-        style: "destructive",
-        onPress: () => setData((prev) => prev.filter((c) => c.id !== id)),
-      },
-    ]);
+  // Salva a categoria: cria uma nova se nenhuma estiver selecionada, ou atualiza a existente
+  async function Salvar() {
+    if (!nomeCategoria.trim()) return;
+    if (selectedCategoria) {
+      await categoriaRepo.update(new Categoria(nomeCategoria, selectedCategoria.Id));
+    } else {
+      await categoriaRepo.create(new Categoria(nomeCategoria, 0));
+    }
+    await loadData();
+    closeModal();
   }
 
+  async function handleDelete(id: number): Promise<void> {
+    Alert.alert(
+      "Confirmação",
+      "Tem certeza que deseja excluir esta categoria?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Excluir",
+          style: "destructive",
+          onPress: async () => {
+            await categoriaRepo.delete(id);
+            await loadData();
+          }
+        }
+      ]
+    );
+  }
+
+  function openCreate(): void {
+    setSelectedCategoria(null);
+    setNomeCategoria('');
+    setModalVisible(true);
+  }
+
+  function openEdit(item: Categoria): void {
+    setSelectedCategoria(item);
+    setNomeCategoria(item.Nome);
+    setModalVisible(true);
+  }
+
+  function closeModal(): void {
+    setSelectedCategoria(null);
+    setNomeCategoria('');
+    setModalVisible(false);
+  }
   return (
     <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.titleScreen}>Gestão de categorias</Text>
+
+        <TouchableOpacity style={styles.addButton} onPress={openCreate}>
+          <Text style={styles.addButtonText}>+ Nova</Text>
+        </TouchableOpacity>
+      </View>
       <FlatList
-        data={data}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={styles.lista}
-        ListEmptyComponent={
-          <Text style={styles.vazio}>Nenhuma categoria cadastrada.</Text>
-        }
+        data={categorias}
+        keyExtractor={(item) => String(item.Id)}
+        contentContainerStyle={{ paddingBottom: 20 }}
         renderItem={({ item }) => (
-          <View style={styles.item}>
-            <Text style={styles.itemNome}>{item.nome}</Text>
+          <View style={styles.card}>
+            <View style={styles.sideBar} />
 
-            <View style={styles.acoes}>
-              <Pressable
-                style={styles.btnEditar}
-                onPress={() => abrirEditar(item)}
-              >
-                <Text style={styles.btnTexto}>Editar</Text>
-              </Pressable>
+            <View style={styles.cardInner}>
+              <View style={styles.cardContent}>
+                <Text style={styles.title}>ID: {item.Id}</Text>
+                <Text style={styles.title}>Produto: {item.Nome}</Text>
+              </View>
 
-              <Pressable
-                style={styles.btnExcluir}
-                onPress={() => excluir(item.id)}
-              >
-                <Text style={styles.btnTexto}>Excluir</Text>
-              </Pressable>
+              <View style={styles.actions}>
+                <TouchableOpacity
+                  style={[styles.iconButton]}
+                  onPress={() => openEdit(item)}
+                >
+                  <Text style={styles.iconText}>✏️ Editar</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.iconButton]}
+                  onPress={() => handleDelete(item.Id)}
+                >
+                  <Text style={styles.iconText}>🗑️ Excluir</Text>
+                </TouchableOpacity>
+              </View>
             </View>
+
           </View>
         )}
       />
 
-      {/* Modal de criar / editar categoria */}
-      <Modal visible={modalVisivel} transparent animationType="slide">
-        <View style={styles.modalFundo}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitulo}>
-              {editandoId !== null ? "Editar Categoria" : "Nova Categoria"}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="fade"
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+
+            <Text style={styles.modalTitle}>
+              {selectedCategoria ? "Editar Categoria" : "Nova Categoria"}
             </Text>
 
+
             <TextInput
+              placeholder="Digite o nome"
+              value={nomeCategoria}
+              onChangeText={setNomeCategoria}
               style={styles.input}
-              placeholder="Nome da categoria"
-              value={nomeInput}
-              onChangeText={setNomeInput}
             />
 
-            <Pressable style={styles.btnSalvar} onPress={salvar}>
-              <Text style={styles.btnTexto}>Salvar</Text>
-            </Pressable>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setModalVisible(false)}
+              >
+                <Text>Cancelar</Text>
+              </TouchableOpacity>
 
-            <Pressable
-              style={styles.btnCancelar}
-              onPress={() => setModalVisivel(false)}
-            >
-              <Text style={styles.btnCancelarTexto}>Cancelar</Text>
-            </Pressable>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.saveButton]}
+                onPress={Salvar}
+              >
+                <Text style={{ color: "#fff" }}>Salvar</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
-    </View>
+    </View >
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
+    backgroundColor: '#f6f6f6'
   },
-  lista: {
-    padding: 16,
-    gap: 10,
+  sideBar: {
+    width: 6,
+    backgroundColor: "#FF9800", // laranja 🍊
   },
 
-  // Cada item da lista
-  item: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  itemNome: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#0f172a",
+  cardInner: {
     flex: 1,
+    padding: 16,
   },
-  acoes: {
+  header: {
     flexDirection: "row",
-    gap: 8,
-  },
-  btnEditar: {
-    backgroundColor: "#f59e0b",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 3,
-  },
-  btnExcluir: {
-    backgroundColor: "#ef4444",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 3,
-  },
-  btnTexto: {
-    color: "#fff",
-    fontWeight: "600",
-    fontSize: 13,
-  },
-  vazio: {
-    textAlign: "center",
-    color: "#94a3b8",
-    marginTop: 40,
-    fontSize: 15,
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 20,
   },
 
-  // Botão no header
-  headerBtn: {
-    marginRight: 4,
-    backgroundColor: "#3b82f6",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  headerBtnTexto: {
-    color: "#fff",
+  titleScreen: {
+    fontSize: 18,
     fontWeight: "bold",
+    color: "#1E293B",
+  },
+  
+  addButton: {
+    backgroundColor: "#4CAF50",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+  },
+
+  addButtonText: {
+    color: "#fff",
+    fontWeight: "600",
     fontSize: 14,
   },
+  card: {
+    flexDirection: 'row',
+    width: '95%',
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    // padding: 0,
+    marginTop: 12,
+    marginHorizontal: 10,
+    overflow: 'hidden',
 
-  // Modal
-  modalFundo: {
+    // sombra iOS
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    
+    // sombra Android
+    elevation: 4,
+  },
+  
+  cardContent: {
+    marginBottom: 12,
+  },
+
+  title: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+  },
+  
+  actions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: 'center',
+    gap: 20
+  },
+  
+  button: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  
+  editButton: {
+    backgroundColor: "#2196F3",
+    marginRight: 6,
+  },
+
+  deleteButton: {
+    backgroundColor: "#F44336",
+    marginLeft: 6,
+  },
+  
+  buttonText: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+  modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
     justifyContent: "center",
-    padding: 24,
+    alignItems: "center",
   },
-  modalBox: {
+  
+  modalContainer: {
+    width: "85%",
     backgroundColor: "#fff",
-    borderRadius: 4,
-    padding: 24,
-    gap: 12,
+    borderRadius: 16,
+    padding: 20,
   },
-  modalTitulo: {
+
+  modalTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#0f172a",
-    marginBottom: 4,
+    marginBottom: 12,
   },
+
   input: {
     borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 6,
-    padding: 12,
-    fontSize: 15,
-    color: "#0f172a",
-    backgroundColor: "#f8fafc",
-  },
-  btnSalvar: {
-    backgroundColor: "#0f172a",
-    padding: 14,
-    borderRadius: 6,
-    alignItems: "center",
-  },
-  btnCancelar: {
-    alignItems: "center",
+    borderColor: "#ddd",
+    borderRadius: 10,
     padding: 10,
+    marginBottom: 16,
   },
-  btnCancelarTexto: {
-    color: "#64748b",
+  
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
+  
+  modalButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+
+  cancelButton: {
+    backgroundColor: "#eee",
+  },
+  
+  saveButton: {
+    backgroundColor: "#4CAF50",
+  },
+  iconButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+  },
+  
+  iconText: {
     fontSize: 14,
+    fontWeight: "600",
   },
 });

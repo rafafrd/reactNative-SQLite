@@ -36,7 +36,7 @@ export default function Produtos({ navigation }: Props) {
     useState<Categoria | null>(null);
 
   // Estado do modal do dropdown de categorias
-  const [dropdownVisivel, setDropdownVisivel] = useState(false);
+  const [dropdownVisivel, setDropdownVisivel] = useState(false); //esconde o dropdown
 
   // add botao +
   useLayoutEffect(() => {
@@ -116,7 +116,7 @@ export default function Produtos({ navigation }: Props) {
       {
         text: "Excluir",
         style: "destructive",
-        onPress: () => setData((prev) => prev.filter((p) => p.id !== id)),
+        onPress: () => setData((prev) => prev.filter((p) => p.id !== id)), //aqui ao clicar no excluir, ele filtra a lista removendo o item com o id q bater
       },
     ]);
   }
@@ -190,7 +190,7 @@ export default function Produtos({ navigation }: Props) {
             >
               <Text
                 style={
-                  categoriaSelecionada
+                  categoriaSelecionada //ternario entre estilos
                     ? styles.dropdownTexto
                     : styles.dropdownPlaceholder
                 }
